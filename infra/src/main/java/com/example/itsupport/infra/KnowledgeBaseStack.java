@@ -75,6 +75,7 @@ public class KnowledgeBaseStack extends Stack {
                 .runtime(Runtime.PYTHON_3_12)
                 .handler("index.handler")
                 .timeout(Duration.minutes(5))
+                .memorySize(256)
                 .role(indexCreatorRole)
                 .code(Code.fromInline(getIndexCreatorCode()))
                 .build();
@@ -137,29 +138,48 @@ public class KnowledgeBaseStack extends Stack {
                "        endpoint = event['ResourceProperties']['CollectionEndpoint']\n" +
                "        index_name = event['ResourceProperties']['IndexName']\n" +
                "        dimension = int(event['ResourceProperties']['EmbeddingDimension'])\n" +
-               "        print(f'Waiting 60s for collection...')\n" +
-               "        time.sleep(60)\n" +
                "        url = f'{endpoint}/{index_name}'\n" +
                "        index_body = json.dumps({'settings':{'index':{'knn':True,'knn.algo_param.ef_search':512}},'mappings':{'properties':{'embedding':{'type':'knn_vector','dimension':dimension,'method':{'engine':'faiss','name':'hnsw','parameters':{'m':16,'ef_construction':512},'space_type':'l2'}},'text':{'type':'text'},'metadata':{'type':'text'}}}})\n" +
                "        session = boto3.Session()\n" +
                "        creds = session.get_credentials().get_frozen_credentials()\n" +
                "        region = session.region_name\n" +
-               "        head_req = AWSRequest(method='HEAD', url=url, headers={'Content-Type':'application/json'})\n" +
-               "        SigV4Auth(creds, 'aoss', region).add_auth(head_req)\n" +
-               "        try:\n" +
-               "            r = urllib.request.Request(url, method='HEAD', headers=dict(head_req.headers))\n" +
-               "            urllib.request.urlopen(r)\n" +
-               "            print(f'Index {index_name} already exists')\n" +
-               "            cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IndexName':index_name})\n" +
-               "            return\n" +
-               "        except urllib.error.HTTPError as e:\n" +
-               "            if e.code != 404: raise\n" +
-               "        put_req = AWSRequest(method='PUT', url=url, data=index_body, headers={'Content-Type':'application/json'})\n" +
-               "        SigV4Auth(creds, 'aoss', region).add_auth(put_req)\n" +
-               "        r = urllib.request.Request(url, data=index_body.encode(), method='PUT', headers=dict(put_req.headers))\n" +
-               "        resp = urllib.request.urlopen(r)\n" +
-               "        print(f'Index created: {json.loads(resp.read().decode())}')\n" +
-               "        cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IndexName':index_name})\n" +
+               "        # Retry loop: access policy propagation can take up to 2-3 minutes\n" +
+               "        max_attempts = 6\n" +
+               "        for attempt in range(max_attempts):\n" +
+               "            wait_time = 30 * (attempt + 1)\n" +
+               "            print(f'Attempt {attempt+1}/{max_attempts}: waiting {wait_time}s for access policy propagation...')\n" +
+               "            time.sleep(wait_time)\n" +
+               "            try:\n" +
+               "                # Check if index already exists\n" +
+               "                head_req = AWSRequest(method='HEAD', url=url, headers={'Content-Type':'application/json'})\n" +
+               "                SigV4Auth(creds, 'aoss', region).add_auth(head_req)\n" +
+               "                r = urllib.request.Request(url, method='HEAD', headers=dict(head_req.headers))\n" +
+               "                urllib.request.urlopen(r)\n" +
+               "                print(f'Index {index_name} already exists')\n" +
+               "                cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IndexName':index_name})\n" +
+               "                return\n" +
+               "            except urllib.error.HTTPError as e:\n" +
+               "                if e.code == 403:\n" +
+               "                    print(f'Got 403 on HEAD, access policy not yet propagated')\n" +
+               "                    if attempt < max_attempts - 1: continue\n" +
+               "                    raise Exception('Access policy did not propagate after max retries')\n" +
+               "                elif e.code != 404:\n" +
+               "                    raise\n" +
+               "            # Index doesn't exist (404), try to create it\n" +
+               "            try:\n" +
+               "                put_req = AWSRequest(method='PUT', url=url, data=index_body, headers={'Content-Type':'application/json'})\n" +
+               "                SigV4Auth(creds, 'aoss', region).add_auth(put_req)\n" +
+               "                r = urllib.request.Request(url, data=index_body.encode(), method='PUT', headers=dict(put_req.headers))\n" +
+               "                resp = urllib.request.urlopen(r)\n" +
+               "                print(f'Index created: {json.loads(resp.read().decode())}')\n" +
+               "                cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IndexName':index_name})\n" +
+               "                return\n" +
+               "            except urllib.error.HTTPError as e:\n" +
+               "                if e.code == 403 and attempt < max_attempts - 1:\n" +
+               "                    print(f'Got 403 on PUT, retrying...')\n" +
+               "                    continue\n" +
+               "                raise\n" +
+               "        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error':'Max retries exceeded'})\n" +
                "    except Exception as e:\n" +
                "        print(f'Error: {str(e)}')\n" +
                "        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error':str(e)})\n";
