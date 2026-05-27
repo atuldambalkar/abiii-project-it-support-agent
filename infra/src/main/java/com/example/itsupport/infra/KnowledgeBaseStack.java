@@ -65,10 +65,11 @@ public class KnowledgeBaseStack extends Stack {
                 .resources(List.of("arn:aws:aoss:" + this.getRegion() + ":" + this.getAccount() + ":collection/*"))
                 .build());
 
+        // Data access policy with aoss:* permissions for both Lambda and Bedrock roles
         CfnResource ossAccessPolicy = CfnResource.Builder.create(this, "OSSAccessPolicy")
                 .type("AWS::OpenSearchServerless::AccessPolicy")
                 .properties(Map.of("Name", "it-support-kb-access", "Type", "data",
-                        "Policy", "[{\"Rules\":[{\"ResourceType\":\"index\",\"Resource\":[\"index/it-support-runbooks/*\"],\"Permission\":[\"aoss:CreateIndex\",\"aoss:UpdateIndex\",\"aoss:DescribeIndex\",\"aoss:ReadDocument\",\"aoss:WriteDocument\"]},{\"ResourceType\":\"collection\",\"Resource\":[\"collection/it-support-runbooks\"],\"Permission\":[\"aoss:CreateCollectionItems\",\"aoss:UpdateCollectionItems\",\"aoss:DescribeCollectionItems\"]}],\"Principal\":[\"" + bedrockKbRole.getRoleArn() + "\",\"" + indexCreatorRole.getRoleArn() + "\"]}]"))
+                        "Policy", "[{\"Rules\":[{\"ResourceType\":\"index\",\"Resource\":[\"index/it-support-runbooks/*\"],\"Permission\":[\"aoss:*\"]},{\"ResourceType\":\"collection\",\"Resource\":[\"collection/it-support-runbooks\"],\"Permission\":[\"aoss:*\"]}],\"Principal\":[\"" + bedrockKbRole.getRoleArn() + "\",\"" + indexCreatorRole.getRoleArn() + "\"]}]"))
                 .build();
 
         Function indexCreatorFn = Function.Builder.create(this, "IndexCreatorFunction")
@@ -143,43 +144,33 @@ public class KnowledgeBaseStack extends Stack {
                "        session = boto3.Session()\n" +
                "        creds = session.get_credentials().get_frozen_credentials()\n" +
                "        region = session.region_name\n" +
-               "        # Retry loop: access policy propagation can take up to 2-3 minutes\n" +
-               "        max_attempts = 6\n" +
+               "        # Retry with increasing backoff - access policy propagation can take 2-3 min\n" +
+               "        max_attempts = 8\n" +
                "        for attempt in range(max_attempts):\n" +
                "            wait_time = 30 * (attempt + 1)\n" +
-               "            print(f'Attempt {attempt+1}/{max_attempts}: waiting {wait_time}s for access policy propagation...')\n" +
+               "            print(f'Attempt {attempt+1}/{max_attempts}: waiting {wait_time}s...')\n" +
                "            time.sleep(wait_time)\n" +
-               "            try:\n" +
-               "                # Check if index already exists\n" +
-               "                head_req = AWSRequest(method='HEAD', url=url, headers={'Content-Type':'application/json'})\n" +
-               "                SigV4Auth(creds, 'aoss', region).add_auth(head_req)\n" +
-               "                r = urllib.request.Request(url, method='HEAD', headers=dict(head_req.headers))\n" +
-               "                urllib.request.urlopen(r)\n" +
-               "                print(f'Index {index_name} already exists')\n" +
-               "                cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IndexName':index_name})\n" +
-               "                return\n" +
-               "            except urllib.error.HTTPError as e:\n" +
-               "                if e.code == 403:\n" +
-               "                    print(f'Got 403 on HEAD, access policy not yet propagated')\n" +
-               "                    if attempt < max_attempts - 1: continue\n" +
-               "                    raise Exception('Access policy did not propagate after max retries')\n" +
-               "                elif e.code != 404:\n" +
-               "                    raise\n" +
-               "            # Index doesn't exist (404), try to create it\n" +
                "            try:\n" +
                "                put_req = AWSRequest(method='PUT', url=url, data=index_body, headers={'Content-Type':'application/json'})\n" +
                "                SigV4Auth(creds, 'aoss', region).add_auth(put_req)\n" +
                "                r = urllib.request.Request(url, data=index_body.encode(), method='PUT', headers=dict(put_req.headers))\n" +
                "                resp = urllib.request.urlopen(r)\n" +
-               "                print(f'Index created: {json.loads(resp.read().decode())}')\n" +
+               "                result = json.loads(resp.read().decode())\n" +
+               "                print(f'Index created successfully: {result}')\n" +
                "                cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IndexName':index_name})\n" +
                "                return\n" +
                "            except urllib.error.HTTPError as e:\n" +
+               "                body = e.read().decode() if e.fp else ''\n" +
+               "                print(f'HTTP {e.code}: {body}')\n" +
                "                if e.code == 403 and attempt < max_attempts - 1:\n" +
-               "                    print(f'Got 403 on PUT, retrying...')\n" +
+               "                    print('Access policy not yet propagated, retrying...')\n" +
                "                    continue\n" +
+               "                elif e.code == 400 and 'resource_already_exists' in body:\n" +
+               "                    print(f'Index {index_name} already exists')\n" +
+               "                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IndexName':index_name})\n" +
+               "                    return\n" +
                "                raise\n" +
-               "        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error':'Max retries exceeded'})\n" +
+               "        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error':'Max retries exceeded - access policy did not propagate'})\n" +
                "    except Exception as e:\n" +
                "        print(f'Error: {str(e)}')\n" +
                "        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error':str(e)})\n";
