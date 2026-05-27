@@ -23,31 +23,18 @@
     </properties>
 
     <dependencies>
-        <!-- Spring Boot Web (for REST API with SSE streaming) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
-
-        <!-- Spring AI Bedrock Converse Starter -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-bedrock-converse-spring-boot-starter</artifactId>
         </dependency>
-
-        <!-- Spring Boot OAuth2 Client (identity delegation) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-client</artifactId>
-        </dependency>
-
-        <!-- Spring Boot Actuator (health checks) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-
-        <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -99,5 +86,4 @@
             </snapshots>
         </repository>
     </repositories>
-
 </project>

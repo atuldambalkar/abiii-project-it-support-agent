@@ -2,40 +2,50 @@ spring:
   application:
     name: it-support-agent
 
-  security:
-    oauth2:
-      client:
-        registration:
-          active-directory:
-            client-id: ${AD_CLIENT_ID:placeholder-ad-client-id}
-            client-secret: ${AD_CLIENT_SECRET:placeholder-ad-secret}
-            authorization-grant-type: client_credentials
-            scope: https://graph.microsoft.com/.default
-            provider: azure-ad
-          servicenow:
-            client-id: ${SNOW_CLIENT_ID:placeholder-snow-client-id}
-            client-secret: ${SNOW_CLIENT_SECRET:placeholder-snow-secret}
-            authorization-grant-type: client_credentials
-            scope: useraccount
-            provider: servicenow
-        provider:
-          azure-ad:
-            token-uri: https://login.microsoftonline.com/${AD_TENANT_ID:common}/oauth2/v2.0/token
-          servicenow:
-            token-uri: ${SNOW_INSTANCE_URL:https://instance.service-now.com}/oauth_token.do
+  ai:
+    bedrock:
+      converse:
+        chat:
+          enabled: true
+          model: anthropic.claude-sonnet-4-20250514
+          region: ${AWS_REGION:us-east-1}
+          guardrail-id: ${BEDROCK_GUARDRAIL_ID:}
+          guardrail-version: ${BEDROCK_GUARDRAIL_VERSION:DRAFT}
 
 server:
   port: 8080
 
-# Bedrock Knowledge Base configuration
 bedrock:
   knowledge-base:
-    id: ${BEDROCK_KB_ID:placeholder-kb-id}
-    data-source-id: ${BEDROCK_KB_DS_ID:placeholder-ds-id}
-    model-arn: arn:aws:bedrock:${AWS_REGION:us-east-1}::foundation-model/anthropic.claude-sonnet-4-20250514
+    id: ${BEDROCK_KB_ID:NGCEOIVMYF}
+    data-source-id: ${BEDROCK_KB_DS_ID:VJI9ICQ42F}
+
+agentcore:
+  runtime:
+    session-timeout: 86400
+    max-concurrent-sessions: 100
+  memory:
+    short-term:
+      ttl-hours: 24
+    long-term:
+      enabled: true
+  code-interpreter:
+    timeout-seconds: 30
+    allowed-commands:
+      - ping
+      - nslookup
+      - traceroute
+      - certcheck
+      - cert-renew
+
+simulation:
+  enabled: true
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
