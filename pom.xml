@@ -35,6 +35,12 @@
             <artifactId>spring-ai-bedrock-converse-spring-boot-starter</artifactId>
         </dependency>
 
+        <!-- Spring Boot OAuth2 Client (identity delegation) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+
         <!-- Spring Boot Actuator (health checks) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -45,6 +51,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
