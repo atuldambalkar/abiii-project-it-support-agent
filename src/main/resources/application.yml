@@ -4,13 +4,13 @@ spring:
 
   ai:
     bedrock:
+      aws:
+        region: ${AWS_REGION:us-east-1}
       converse:
         chat:
           enabled: true
-          model: anthropic.claude-sonnet-4-20250514
-          region: ${AWS_REGION:us-east-1}
-          guardrail-id: ${BEDROCK_GUARDRAIL_ID:}
-          guardrail-version: ${BEDROCK_GUARDRAIL_VERSION:DRAFT}
+          options:
+            model: ${BEDROCK_MODEL_ID:us.anthropic.claude-sonnet-4-20250514-v1:0}
 
 server:
   port: 8080
